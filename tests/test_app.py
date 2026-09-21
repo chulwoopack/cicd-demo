@@ -1,6 +1,6 @@
 import pytest
 
-from app import app
+from cicd_demo.app import app
 
 
 @pytest.fixture
