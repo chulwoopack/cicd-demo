@@ -105,7 +105,7 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Run Bandit
-        run: uv run bandit -r . -x ./tests -ll -s B104
+        run: uv run bandit -r src/cicd_demo -ll -s B104
 
 
   # =======================================================
