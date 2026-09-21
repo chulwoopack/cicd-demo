@@ -3,9 +3,6 @@ name: CI/CD Pipeline
 # =========================================================
 # TRIGGERS
 # =========================================================
-# Run the workflow when:
-# 1. A pull request targets main
-# 2. Code is pushed/merged into main
 on:
   pull_request:
     branches: [main]
@@ -36,16 +33,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.17"
+          enable-cache: true
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
+        run: uv sync --locked --dev
 
       - name: Run unit tests
-        run: pytest -q
+        run: uv run pytest -q
 
 
   # =======================================================
@@ -62,15 +62,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
-      - name: Install Ruff
-        run: pip install ruff
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.17"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
 
       - name: Run Ruff
         run: |
-          ruff check .
-          ruff format --check .
+          uv run ruff check .
+          uv run ruff format --check .
 
 
   # =======================================================
@@ -87,33 +93,31 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
 
-      - name: Install Bandit
-        run: pip install bandit
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.17"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
 
       - name: Run Bandit
-        # Scan application code, but not test code.
-        #
-        # B104 warns about binding to 0.0.0.0.
-        # That is intentional here because Render requires
-        # the web service to listen on all interfaces.
-        run: bandit -r . -x ./test.py -ll -s B104
+        run: uv run bandit -r . -x ./tests -ll -s B104
 
 
   # =======================================================
-  # CI: BUILD + PUBLISH ARTIFACT
+  # BUILD + PUBLISH
   # =======================================================
-  # This job:
-  # - runs only for pushes to main
-  # - waits for ALL validation jobs to pass
-  # - builds the Docker image
-  # - publishes it to DockerHub
   build-and-publish:
     name: Build and Publish Docker Image
 
+    # Run only on pushes to main, not on pull requests.
     if: github.event_name == 'push'
 
+    # All CI checks must pass first.
     needs:
       - test
       - lint
@@ -140,25 +144,14 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-
-          # Keep both:
-          # 1. Exact commit SHA for traceability
-          # 2. latest for convenience
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
 
 
   # =======================================================
-  # CD: DEPLOY TO RENDER
+  # CD: DEPLOY
   # =======================================================
-  # Deployment happens only after:
-  #
-  # test + lint + security
-  #          ↓
-  # build + publish
-  #          ↓
-  #       deploy
   deploy:
     name: Deploy to Render
 
@@ -175,9 +168,6 @@ jobs:
       - name: Trigger Render deployment
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-
-          # Deploy the exact image built from this Git commit,
-          # rather than relying only on :latest.
           IMAGE_URL: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
         run: |
