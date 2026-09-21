@@ -1,0 +1,191 @@
+name: CI/CD Pipeline
+
+# =========================================================
+# TRIGGERS
+# =========================================================
+# Run the workflow when:
+# 1. A pull request targets main
+# 2. Code is pushed/merged into main
+on:
+  pull_request:
+    branches: [main]
+
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: cicd-demo
+
+
+jobs:
+
+  # =======================================================
+  # CI 1: UNIT TEST
+  # =======================================================
+  test:
+    name: Unit Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run unit tests
+        run: pytest -q
+
+
+  # =======================================================
+  # CI 2: STATIC CODE ANALYSIS / LINT
+  # =======================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff
+        run: |
+          ruff check .
+          ruff format --check .
+
+
+  # =======================================================
+  # CI 3: SECURITY STATIC ANALYSIS
+  # =======================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit
+        # Scan application code, but not test code.
+        #
+        # B104 warns about binding to 0.0.0.0.
+        # That is intentional here because Render requires
+        # the web service to listen on all interfaces.
+        run: bandit -r . -x ./test.py -ll -s B104
+
+
+  # =======================================================
+  # CI: BUILD + PUBLISH ARTIFACT
+  # =======================================================
+  # This job:
+  # - runs only for pushes to main
+  # - waits for ALL validation jobs to pass
+  # - builds the Docker image
+  # - publishes it to DockerHub
+  build-and-publish:
+    name: Build and Publish Docker Image
+
+    if: github.event_name == 'push'
+
+    needs:
+      - test
+      - lint
+      - security
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+
+          # Keep both:
+          # 1. Exact commit SHA for traceability
+          # 2. latest for convenience
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+
+
+  # =======================================================
+  # CD: DEPLOY TO RENDER
+  # =======================================================
+  # Deployment happens only after:
+  #
+  # test + lint + security
+  #          ↓
+  # build + publish
+  #          ↓
+  #       deploy
+  deploy:
+    name: Deploy to Render
+
+    if: github.event_name == 'push'
+
+    needs:
+      - build-and-publish
+
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    steps:
+      - name: Trigger Render deployment
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+
+          # Deploy the exact image built from this Git commit,
+          # rather than relying only on :latest.
+          IMAGE_URL: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+        run: |
+          ENCODED_IMAGE_URL=$(python3 -c \
+            'import os, urllib.parse; print(urllib.parse.quote(os.environ["IMAGE_URL"], safe=""))')
+
+          curl --fail \
+            --silent \
+            --show-error \
+            --request POST \
+            "${RENDER_DEPLOY_HOOK_URL}&imgURL=${ENCODED_IMAGE_URL}"
