@@ -11,7 +11,7 @@ def client():
         yield client
 
 
-def test_app_is_working(client):
+def test_homepage_returns_hello_world(client):
     response = client.get("/")
 
     assert response.status_code == 200
