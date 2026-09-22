@@ -21,15 +21,21 @@ Deploy to Render
 ```
 
 ## Run Locally
+```
 uv sync
 uv run python -m cicd_demo.app
+```
 
 ## Run Tests
+```
 uv run pytest -q
+```
 
 ## Docker
+```
 docker build -t cicd-demo .
 docker run --rm -p 8080:8080 cicd-demo
+```
 
 ## Project Structure
 ```
