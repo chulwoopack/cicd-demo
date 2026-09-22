@@ -15,7 +15,7 @@ def test_homepage_returns_hello_world(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"Hello World!" in response.data
+    assert b"Hello CI/CD!" in response.data
 
 
 def test_health_endpoint(client):
