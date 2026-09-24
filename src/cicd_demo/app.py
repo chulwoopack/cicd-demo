@@ -1,9 +1,13 @@
 import os
 
-from flask import Flask
+from flask import Flask, request
 
 app = Flask(__name__)
 
+@app.route("/greet")
+def greet():
+    name = request.args.get("name", "Guest")
+    return {"message": f"Hello, {name}!"}, 200
 
 @app.route("/")
 def hello():
