@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -13,6 +13,12 @@ def hello():
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
+
+
+@app.route("/greet")
+def greet():
+    name = request.args.get("name", "Guest")
+    return {"message": f"Hello, {name}!"}, 200
 
 
 if __name__ == "__main__":
