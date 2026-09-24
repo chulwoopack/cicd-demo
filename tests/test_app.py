@@ -23,3 +23,20 @@ def test_health_endpoint(client):
 
     assert response.status_code == 200
     assert response.get_json() == {"status": "ok"}
+
+def test_greet_with_name(client):
+    response = client.get("/greet?name=Alice")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "message": "Hello, Alice!"
+    }
+
+
+def test_greet_without_name(client):
+    response = client.get("/greet")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "message": "Hello, Guest!"
+    }
