@@ -10,6 +10,12 @@ def hello():
     return "Hello CI/CD!"
 
 
+@app.route("/greet")
+def greet():
+    name = request.args.get("name", "Guest")
+    return {"message": f"Hello, {name}!"}, 200
+
+
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
