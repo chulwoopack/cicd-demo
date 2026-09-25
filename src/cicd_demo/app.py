@@ -9,6 +9,7 @@ app = Flask(__name__)
 def hello():
     return "Hello CI/CD!"
 
+
 @app.route("/greet")
 def greet():
     name = request.args.get("name", "Guest")
